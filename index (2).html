@@ -59,11 +59,26 @@
     </div>
 
     <footer class="composer">
+      <!-- Resim ekleme butonu ve gizli dosya inputu -->
+      <button id="image-btn" type="button" aria-label="Resim ekle" title="Resim ekle">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="2.18" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M22 15l-5-5-5 5-5-5-5 5" />
+        </svg>
+      </button>
+      <input
+        id="image-input"
+        type="file"
+        accept="image/jpeg,image/png,image/gif,image/webp"
+        style="display:none"
+      />
+
       <input
         id="message-input"
         type="text"
         maxlength="500"
-        placeholder="Bir mesaj yaz..."
+        placeholder="Bir mesaj yaz veya resim ekle..."
         autocomplete="off"
       />
       <button id="send-btn" type="button" aria-label="Gönder">
