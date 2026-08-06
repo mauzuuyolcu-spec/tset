@@ -1,11 +1,13 @@
 """
 Frekans - Basit, gercek zamanli mesajlasma sitesi
-Flask + Flask-SocketIO kullanir. Veritabani yoktur, her sey bellekte tutulur
-(sunucu yeniden baslatilinca mesaj gecmisi silinir).
+Resim paylasimi eklendi (base64 ile).
+Render.com uyumlu (host=0.0.0.0, PORT ortam degiskeni)
 """
 
-from datetime import datetime
+import os
 import random
+import base64
+from datetime import datetime
 
 from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
@@ -20,6 +22,8 @@ socketio = SocketIO(app)
 connected_users = {}      # { sid: username }
 message_history = []      # son mesajlarin listesi
 MAX_HISTORY = 50          # yeni katilan biri en fazla bu kadar eski mesaji gorur
+MAX_IMAGE_SIZE = 500 * 1024  # 500 KB
+ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
 def online_count():
@@ -84,14 +88,33 @@ def handle_send_message(data):
         return
 
     text = (data or {}).get("text", "").strip()[:500]
-    if not text:
+    image_data = (data or {}).get("image", "").strip()
+
+    # En azından metin veya resim olmalı
+    if not text and not image_data:
         return
+
+    # Resim varsa doğrula
+    if image_data:
+        try:
+            header, encoded = image_data.split(",", 1)
+            mime_type = header.split(":")[1].split(";")[0]
+            if mime_type not in ALLOWED_IMAGE_TYPES:
+                return  # geçersiz tür
+            # Boyut kontrolü (base64 uzunluğu yaklaşık 4/3 oranında)
+            if len(encoded) > MAX_IMAGE_SIZE * 4 / 3:
+                return  # çok büyük
+        except Exception:
+            return  # bozuk veri
 
     message = {
         "username": username,
         "text": text,
         "time": datetime.now().strftime("%H:%M"),
     }
+    if image_data:
+        message["image"] = image_data  # base64 tam veri (data:image/...)
+
     message_history.append(message)
     if len(message_history) > MAX_HISTORY:
         message_history.pop(0)
@@ -113,9 +136,10 @@ def handle_stop_typing(_data):
         emit("user_stop_typing", {"username": username}, broadcast=True, include_self=False)
 
 
+# --- Bu kısım Render (production) için çok önemli! ---
 if __name__ == "__main__":
-    # debug=True gelistirme icin faydali (kod degisince otomatik yeniden baslar)
-    # allow_unsafe_werkzeug: bu sadece yerel gelistirme/ogrenme amacli bir
-    # projedir, gercek bir yayinda (production) bunun yerine gunicorn+eventlet
-    # gibi bir sunucu kullanilmalidir.
-    socketio.run(app, debug=True, host="127.0.0.1", port=5000, allow_unsafe_werkzeug=True)
+    # Render otomatik olarak PORT ortam değişkenini verir, yoksa 5000
+    port = int(os.environ.get("PORT", 5000))
+    # host='0.0.0.0' dışarıdan erişime açar
+    # debug=False production'da kapalı olmalı
+    socketio.run(app, debug=False, host="0.0.0.0", port=port)
