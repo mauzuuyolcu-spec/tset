@@ -15,14 +15,14 @@ from flask_socketio import SocketIO, emit
 app = Flask(__name__)
 app.config["SECRET_KEY"] = "bu-anahtari-kendi-gizli-anahtarinizla-degistirin"
 
-# async_mode='threading' -> ekstra kurulum gerektirmez (eventlet/gevent sart degil)
-socketio = SocketIO(app)
+# CORS sorunlarını engellemek için
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 # --- Bellekte tutulan veriler ---------------------------------------------
 connected_users = {}      # { sid: username }
 message_history = []      # son mesajlarin listesi
 MAX_HISTORY = 50          # yeni katilan biri en fazla bu kadar eski mesaji gorur
-MAX_IMAGE_SIZE = 500 * 1024  # 500 KB
+MAX_IMAGE_SIZE = 1 * 1024 * 1024  # 1 MB (daha rahat)
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
 
 
@@ -97,15 +97,24 @@ def handle_send_message(data):
     # Resim varsa doğrula
     if image_data:
         try:
+            # Geçerlilik kontrolü
+            if not image_data.startswith("data:image/"):
+                print("Geçersiz resim formatı (data:image ile başlamıyor)")
+                return
+
             header, encoded = image_data.split(",", 1)
             mime_type = header.split(":")[1].split(";")[0]
             if mime_type not in ALLOWED_IMAGE_TYPES:
-                return  # geçersiz tür
-            # Boyut kontrolü (base64 uzunluğu yaklaşık 4/3 oranında)
+                print(f"İzin verilmeyen resim türü: {mime_type}")
+                return
+
+            # Boyut kontrolü (base64 uzunluğu)
             if len(encoded) > MAX_IMAGE_SIZE * 4 / 3:
-                return  # çok büyük
-        except Exception:
-            return  # bozuk veri
+                print("Resim çok büyük (max 1 MB)")
+                return
+        except Exception as e:
+            print(f"Resim işleme hatası: {e}")
+            return
 
     message = {
         "username": username,
@@ -113,13 +122,14 @@ def handle_send_message(data):
         "time": datetime.now().strftime("%H:%M"),
     }
     if image_data:
-        message["image"] = image_data  # base64 tam veri (data:image/...)
+        message["image"] = image_data
 
     message_history.append(message)
     if len(message_history) > MAX_HISTORY:
         message_history.pop(0)
 
     emit("new_message", message, broadcast=True)
+    print(f"Mesaj gönderildi: {username} - {text[:20]}...")
 
 
 @socketio.on("typing")
@@ -138,8 +148,5 @@ def handle_stop_typing(_data):
 
 # --- Bu kısım Render (production) için çok önemli! ---
 if __name__ == "__main__":
-    # Render otomatik olarak PORT ortam değişkenini verir, yoksa 5000
     port = int(os.environ.get("PORT", 5000))
-    # host='0.0.0.0' dışarıdan erişime açar
-    # debug=False production'da kapalı olmalı
     socketio.run(app, debug=False, host="0.0.0.0", port=port)
